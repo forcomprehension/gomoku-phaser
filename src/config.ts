@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 
 export default {
-  type: Phaser.AUTO,
+  type: Phaser.WEBGL,
   parent: 'game',
-  backgroundColor: '#33A5E7',
+  backgroundColor: "#c12d56",
   scale: {
-    width: 800,
-    height: 600,
+    width: 390,
+    height: 844,
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH
   }

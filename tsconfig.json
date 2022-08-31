@@ -8,6 +8,7 @@
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
     "strict": true,
+    "strictPropertyInitialization": false,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Node",
@@ -15,5 +16,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["./src/**/*"]
+  "include": ["./src/**/*", "public/assets/shaders"]
 }
