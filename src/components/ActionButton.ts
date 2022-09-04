@@ -17,7 +17,7 @@ export class ActionButton extends Phaser.GameObjects.Text {
             backgroundColor: "white"
         });
 
-        this.setOrigin(0.5, 0.5);
+        this.setOrigin(0.5);
 
         this.setInteractive();
         this.on("pointerdown", () => {
@@ -30,10 +30,5 @@ export class ActionButton extends Phaser.GameObjects.Text {
 
    public onClick(handleOnClick: () => void) {
         this.on("pointerdown", handleOnClick);
-   }
-
-   destroy(fromScene?: boolean | undefined): void {
-        // @TODO: Redundant action?
-       this.off("pointerdown");
    }
 }

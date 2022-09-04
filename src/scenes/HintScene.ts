@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_SCENE, GAME_SCENE_TRANSITION_TIME, HINT_SCENE } from '../constants/scenes';
 import { addCenteredText } from '../utils/scene';
 import { BaseScene } from './BaseScene';
+import GameScene from './GameScene';
 
 export default class HintScene extends BaseScene {
 
