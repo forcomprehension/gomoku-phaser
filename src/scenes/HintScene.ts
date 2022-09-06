@@ -75,6 +75,8 @@ export default class HintScene extends BaseScene {
   }
 
   protected handleGameStart() {
+    this.scene.add(GAME_SCENE, GameScene);
+
     const isStarted = this.scene.transition({
       target: GAME_SCENE,
       duration: GAME_SCENE_TRANSITION_TIME

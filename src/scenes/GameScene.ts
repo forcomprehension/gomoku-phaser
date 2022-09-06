@@ -1,6 +1,7 @@
+import { Resolver } from "matter";
 import { Game, Input, Tweens } from "phaser";
 import { ActionButton } from "../components/ActionButton";
-import { AI } from "../components/AI";
+import { AI, AI_MOVE_EVENT, WIN_EVENT } from "../components/AI";
 import { CustomGrid, GrowTweenTargetPosition } from "../components/CustomGrid";
 import { FieldSector, FieldSectorState, SectorsContainer } from "../components/FieldSectors";
 import { ON_NEXT_TURN, TurnManager } from "../components/TurnManager";
@@ -19,11 +20,12 @@ export default class GameScene extends BaseScene {
     protected readonly turnManager: TurnManager = new TurnManager();
     protected readonly sectorsContainer: SectorsContainer = new SectorsContainer();
 
-    protected readonly AI: AI = new AI(FieldSectorState.O);
-    protected playerSign: FieldSectorState = FieldSectorState.X;
+    protected readonly AI: AI = new AI(FieldSectorState.X);
+    protected playerSign: FieldSectorState = FieldSectorState.O;
 
     protected gomokuField: CustomGrid<FieldSector>;
     protected debugEnabled: boolean = false;
+    protected gameHasEnded: boolean = false;
 
     constructor() {
         super(GAME_SCENE);
@@ -33,16 +35,25 @@ export default class GameScene extends BaseScene {
         super.preload();
 
         const cb = () => {
-            this.beginPlay();
+            this.AI.on(AI_MOVE_EVENT, ({ row, cell }: any) => {
+                const element = this.sectorsContainer.getElement(row, cell);
+                this.processMove.call(element, this.AI.sign, true);
+            });
+
             this.turnManager.on(ON_NEXT_TURN, (turn: FieldSectorState) => {
                 this.AI.onTurnChange(turn);
             });
+
+            this.beginPlay();
+
+            this.AI.on(WIN_EVENT, (isAI: boolean) => {
+                this.gameHasEnded = true;
+                const winSign = isAI ? this.AI.sign : this.playerSign;
+                this.win(winSign)
+            });
         };
 
-        this.events.once(Phaser.Scenes.Events.TRANSITION_COMPLETE, cb)
-
-        // @TODO: remove after test
-        cb();
+        this.events.once(Phaser.Scenes.Events.TRANSITION_COMPLETE, cb);
     }
 
     protected beginPlay() {
@@ -65,9 +76,21 @@ export default class GameScene extends BaseScene {
         }, this.fieldSectorFactory.bind(this)).setDepth(10);
 
         this.AI.setFieldSectorsMatrix(this.sectorsContainer.getFieldSectorsMatrix());
-        this.turnManager.startGame(this.playerSign);
+        this.AI.init();
+        this.turnManager.startGame(this.AI.sign);
     }
 
+    /**
+     * Make field sector object
+     * 
+     * @param centerX 
+     * @param centerY 
+     * @param rowIndex 
+     * @param cellIndex 
+     * @param baseCellSize 
+     * @param scale 
+     * @returns 
+     */
     public fieldSectorFactory(centerX: number, centerY: number, rowIndex: number, cellIndex: number, baseCellSize: number, scale: number = 1) {
         const obj = FieldSector.AddToScene(
             this,
@@ -86,13 +109,18 @@ export default class GameScene extends BaseScene {
         obj.setInteractive({
             useHandCursor: true,
         }).on(Input.Events.GAMEOBJECT_POINTER_UP, () => {
-            this.handleMarkField.call(obj, this.playerSign);
+            this.processMove.call(obj, this.playerSign, false);
         });
 
         return obj;
     }
 
-    public win(winner: FieldSectorState) {
+    /**
+     * Process win sequence
+     *
+     * @param winner
+     */
+    protected win(winner: FieldSectorState) {
         this.gomokuField.disableInteractive();
         const sectors = this.sectorsContainer.getFieldSectorsMatrix().flat();
         const { screenWidth, screenHeight } = this.getScreenSize();
@@ -111,7 +139,8 @@ export default class GameScene extends BaseScene {
         playAgainBtn.onClick(() => {
             const isStarted = this.scene.transition({
                 target: HINT_SCENE,
-                duration: HINT_SCENE_TRANSITION_TIME
+                duration: HINT_SCENE_TRANSITION_TIME,
+                remove: true
             });
 
             if (isStarted) {
@@ -124,19 +153,46 @@ export default class GameScene extends BaseScene {
         });
 
         const winSign = addCenteredText(this, 50, FieldSectorState[winner])
-            .setAlpha(1)
+            .setAlpha(0)
             .setFontSize(64)
-            .setColor('#' + GameScene.GRAPHICS_COLOR.toString(16));
+            .setColor('#ffffff');
+
+        const { rowFrom, cellFrom, rowTo, cellTo } = this.AI.getWinLine();
+        const centerFrom = this.sectorsContainer.getElement(rowFrom, cellFrom).getCenterCoords();
+        const centerTo = this.sectorsContainer.getElement(rowTo, cellTo).getCenterCoords();
+
+        const winLineGraph = this.add.graphics({
+            lineStyle: {
+                width: 4,
+                color: GameScene.GRAPHICS_COLOR,
+            }
+        }).setDepth(12);
 
         const tween = this.tweens.createTimeline();
         tween.add({
-            targets: [this.gomokuField, ...texts],
             duration: 500,
+            targets: winLineGraph,
+            x2: centerTo.x,
+            y2: centerTo.y,
+            onUpdate(tween: Tweens.Tween) {
+                winLineGraph.clear();
+                winLineGraph.moveTo(centerFrom.x, centerFrom.y);
+                winLineGraph.lineTo(
+                    centerFrom.x - (centerFrom.x - centerTo.x) * tween.progress,
+                    centerFrom.y - (centerFrom.y - centerTo.y) * tween.progress
+                );
+                winLineGraph.stroke();
+            }
+        });
+        tween.add({
+            targets: [this.gomokuField, ...texts, winLineGraph],
+            duration: 500,
+            delay: 500,
             alpha: 0
         });
         tween.add({
             targets: winSign,
-            delay: 300,
+            delay: 500,
             duration: 500,
             alpha: 1
         });
@@ -149,8 +205,7 @@ export default class GameScene extends BaseScene {
         tween.play();
     }
 
-
-    protected handleMarkField(this: FieldSector, sign: FieldSectorState) {
+    protected processMove(this: FieldSector, sign: FieldSectorState, isAIMove: boolean) {
         const scene = this.scene as GameScene;
         if (scene.turnManager.canMove(sign) && scene.sectorsContainer.tryToFillSector(this, sign)) {
             scene.enableInput(false);
@@ -159,17 +214,31 @@ export default class GameScene extends BaseScene {
                 targets: this.sceneText,
                 alpha: 1,
                 duration: 250
-            }).on("complete", () => {
-                scene.win(FieldSectorState.X);
-                return;
-                if (scene.sectorsContainer.doesContainerNearlyFilled()) {
-                    scene.emitFieldGrow().once('complete', () => {
-                        scene.enableInput(true);
-                        scene.turnManager.nextTurn();
-                    });
-                } else {
+            }).on("complete", async () => {
+                if (scene.gameHasEnded) {
                     scene.enableInput(true);
+                    return;
+                }
+
+                if (scene.sectorsContainer.doesContainerNearlyFilled()) {
+                    await new Promise<void>((resolve) => {
+                        scene.emitFieldGrow().once('complete', () => {
+                            scene.AI.growAIScene(); // Sync scene with AI
+
+                            resolve();
+                        })
+                    });
+                }
+
+                const sector = scene.sectorsContainer.getIndexesBySector(this);
+                if (sector) {
+                    const { y: row, x: cell } = sector;
+                    if (!isAIMove) { // AI Scene sync move
+                        scene.AI.move(row, cell, false);
+                    }
+
                     scene.turnManager.nextTurn();
+                    scene.enableInput(true);
                 }
             });
         }
@@ -199,12 +268,32 @@ export default class GameScene extends BaseScene {
     }
 
     public emitFieldGrow() {
+        // Prepare
         const { targets, growConfigs, scale, positions, baseCellSize } = this.gomokuField.startGrow();
         this.gomokuField.chargeAnimQueue();
         this.sectorsContainer.inflate(positions.length);
 
-        // @TODO: TIMELINE
-        this.startGrowingTween(targets, growConfigs);
+        // Common duration
+        const duration = 500;
+
+        const configGetterFactory = (prop: keyof GrowTweenTargetPosition) => {
+            // Gets value from tween config by targetIndex
+            return function() {
+                return growConfigs[arguments[3]][prop];
+            }
+        };
+        this.tweens.add({
+            targets: targets.slice(),
+            duration,
+            x1: configGetterFactory('x1'),
+            x2: configGetterFactory('x2'),
+            y1: configGetterFactory('y1'),
+            y2: configGetterFactory('y2'),
+            onUpdate(this: GameScene) {
+                this.gomokuField.render();
+            },
+            onUpdateScope: this
+        });
 
         this.tweens.add({
             targets: this.processNewCells(positions, baseCellSize, scale),
@@ -217,47 +306,16 @@ export default class GameScene extends BaseScene {
                     return target.getNextPosition();
                 }
             },
-            duration: 500,
+            duration,
         });
 
         return this.tweens.add({
             targets: this.gomokuField.newLinesAnim,
             alpha: 1,
             delay: 100,
-            duration: 400
+            duration: duration - 100
         }).once('complete', () => {
             this.gomokuField.replaceAnimatedLines();
-        });
-    }
-
-    /**
-     * @TODO: Make custom grid as a target
-     *
-     * @param targets
-     * @param tweenConfig
-     */
-    protected startGrowingTween(
-        targets: Phaser.Geom.Line[],
-        tweenConfig: GrowTweenTargetPosition[],
-    ): Tweens.Tween {
-        const configGetterFactory = (prop: keyof GrowTweenTargetPosition) => {
-            // Gets value from tween config by targetIndex
-            return function() {
-                return tweenConfig[arguments[3]][prop];
-            }
-        };
-
-        return this.tweens.add({
-            targets: targets.slice(),
-            duration: 500,
-            x1: configGetterFactory('x1'),
-            x2: configGetterFactory('x2'),
-            y1: configGetterFactory('y1'),
-            y2: configGetterFactory('y2'),
-            onUpdate(this: GameScene) {
-                this.gomokuField.render();
-            },
-            onUpdateScope: this
         });
     }
 }

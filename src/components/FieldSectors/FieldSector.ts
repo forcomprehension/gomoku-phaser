@@ -1,4 +1,4 @@
-import { GameObjects, Geom, Scene, Types } from "phaser";
+import { GameObjects, Scene, Types } from "phaser";
 
 export enum FieldSectorState {
     EMPTY,
@@ -8,7 +8,7 @@ export enum FieldSectorState {
 
 export class FieldSector extends GameObjects.Rectangle {
     static AddToScene(scene: Scene, x: number, y: number, size: number, targetScale: number) {
-        const text = scene.add.text(x, y, "Q", {
+        const text = scene.add.text(x, y, "", {
             fontSize: "48px",
             color: "black"
         }).setOrigin(.5)
@@ -79,5 +79,12 @@ export class FieldSector extends GameObjects.Rectangle {
 
     public setLocked(flag: boolean) {
         this.isLocked = flag;
+    }
+
+    public getCenterCoords() {
+        return {
+            x: this.x,
+            y: this.y
+        };
     }
 }
